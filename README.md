@@ -1,0 +1,1 @@
+# diplom_ads_board_GDM
