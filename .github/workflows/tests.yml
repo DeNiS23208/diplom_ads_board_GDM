@@ -1,0 +1,56 @@
+name: tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ads_db
+          POSTGRES_USER: ads_user
+          POSTGRES_PASSWORD: ads_password
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd="pg_isready -U ads_user -d ads_db"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      POSTGRES_DB: ads_db
+      POSTGRES_USER: ads_user
+      POSTGRES_PASSWORD: ads_password
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      DJANGO_SECRET_KEY: test_key
+      DJANGO_DEBUG: "True"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Migrate
+        run: |
+          python manage.py migrate
+
+      - name: Run tests
+        run: |
+          pytest --cov=ads --cov-report=term-missing -q
