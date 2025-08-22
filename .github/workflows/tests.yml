@@ -2,9 +2,14 @@ name: tests
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - develop
+      - feature/**
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - develop
 
 jobs:
   build-and-test:
@@ -14,27 +19,20 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: ads_db
-          POSTGRES_USER: ads_user
-          POSTGRES_PASSWORD: ads_password
-        ports: [ "5432:5432" ]
+          POSTGRES_DB: app
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+        ports:
+          - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U ads_user -d ads_db"
+          --health-cmd="pg_isready -U app -d app"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
 
-    env:
-      POSTGRES_DB: ads_db
-      POSTGRES_USER: ads_user
-      POSTGRES_PASSWORD: ads_password
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: 5432
-      DJANGO_SECRET_KEY: test_key
-      DJANGO_DEBUG: "True"
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -47,10 +45,28 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Migrate
+      - name: Wait for DB
         run: |
-          python manage.py migrate
+          python - <<'PY'
+          import socket, time
+          host, port = "127.0.0.1", 5432
+          for _ in range(30):
+            try:
+              with socket.create_connection((host, port), 1): break
+            except OSError: time.sleep(1)
+          else:
+            raise SystemExit("DB not reachable")
+          PY
+
+      - name: Env for CI
+        run: |
+          echo "DJANGO_SETTINGS_MODULE=config.settings" >> $GITHUB_ENV
+          echo "DATABASE_URL=postgres://app:app@localhost:5432/app" >> $GITHUB_ENV
+          echo "SECRET_KEY=dummy-ci-key" >> $GITHUB_ENV
+          echo "DEBUG=0" >> $GITHUB_ENV
+
+      - name: Migrate
+        run: python manage.py migrate --noinput
 
       - name: Run tests
-        run: |
-          pytest --cov=ads --cov-report=term-missing -q
+        run: pytest --cov=ads --cov-report=term-missing -q
