@@ -1,9 +1,10 @@
+# ads/views.py
 from rest_framework import viewsets, permissions, status
-from rest_framework.exceptions import NotAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
 
 from .models import Ad, Category
 from .serializers import AdSerializer, CategorySerializer
@@ -24,6 +25,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
     search_fields = ['name']
 
 
+class AdsPagination(PageNumberPagination):
+    page_size = 4
+    page_size_query_param = "page_size"
+
+
 class AdViewSet(viewsets.ModelViewSet):
     """
     Объявления:
@@ -35,20 +41,16 @@ class AdViewSet(viewsets.ModelViewSet):
     serializer_class = AdSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
-    # Поиск/сортировка/фильтрация
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = AdFilter
     search_fields = ['title', 'description']
     ordering_fields = ['created_at', 'price']
 
-    def perform_create(self, serializer):
-        # ВАЖНО: не даём анониму дойти до save(owner=AnonymousUser)
-        user = self.request.user
-        if not user or not user.is_authenticated:
-            raise NotAuthenticated("Требуется аутентификация для создания объявления.")
-        serializer.save(owner=user)
+    pagination_class = AdsPagination
 
-    # --- Экшены модерации (только для staff/admin) ---
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
     def get_permissions(self):
         if self.action in ['approve', 'reject', 'archive']:
             return [permissions.IsAdminUser()]
